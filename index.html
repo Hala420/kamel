@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#190D1B">
+<title>A Little Surprise ♡</title>
+<style>
+  :root { color-scheme: dark; --bg:#190D1B; --title:#FFB6D5; --text:#FFE0ED; --btn:#D94B83; --btn-hover:#FF80B5; box-sizing:border-box;
+          padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  html, body { height:100%; margin:0; background:var(--bg); overflow:hidden; -webkit-tap-highlight-color:transparent; }
+  #intro { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+           text-align:center; padding:24px; font-family:Georgia,"Times New Roman",serif; transition:opacity .8s; }
+  #intro h1 { color:var(--title); font-size:clamp(26px,7vw,40px); margin:0 0 18px; }
+  #intro p { color:var(--text); font-size:clamp(15px,4vw,19px); max-width:420px; margin:0 0 34px; line-height:1.6; }
+  #open { font-family:inherit; font-size:18px; color:#fff; background:var(--btn); border:0; border-radius:999px;
+          padding:14px 34px; cursor:pointer; box-shadow:0 0 24px rgba(217,75,131,.45); animation:pulse 2s infinite; }
+  #open:active { background:var(--btn-hover); }
+  @keyframes pulse { 50% { transform:scale(1.06); } }
+  #stage { position:fixed; inset:0; opacity:0; pointer-events:none; transition:opacity 1s; background:#060208; }
+  #stage.on { opacity:1; pointer-events:auto; }
+  canvas { display:block; width:100%; height:100%; }
+  #replay { position:fixed; left:0; right:0; bottom:calc(14px + env(safe-area-inset-bottom, 0px)); text-align:center;
+            color:#ffb6d5; font:13px Georgia,serif; opacity:0; transition:opacity 1s; pointer-events:none; }
+  #replay.show { opacity:.6; }
+</style>
+</head>
+<body>
+<div id="intro">
+  <h1>A little message for you ♡</h1>
+  <p>هممم نحبك بزاف بزاااافف ملقريي تقلقني بصح نحبك ياخي مكلوب او عيد ميلاد سعيد هايا خلاص اكليك لتحت يخرجلك قلب هيهيهيهي</p>
+  <button id="open">هنا افتح هنااا كمولييي ♡</button>
+</div>
+<div id="stage"><canvas id="cv"></canvas><div id="replay">tap to replay ♡</div></div>
+
+<script>
+const PHRASES = ["I love you","Seni seviyorum","Te amo","Je t’aime","Ich liebe dich","Ti amo","Eu te amo","Я тебя люблю",
+  "사랑해","愛してる","我爱你","أحبك","Σ’ αγαπώ","Ik hou van jou","Jag älskar dig","Kocham cię","ฉันรักเธอ",
+  "Anh yêu em","Aku cinta kamu","Я тебе кохаю"];
+const DURATION = 10000, ANIM = 42 * 16, BG = "#060208";
+const BGC = [6/255, 2/255, 8/255], FLASH = [1, .78, .78];
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const stage = document.getElementById("stage"), replay = document.getElementById("replay");
+
+function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const clamp = v => Math.max(0, Math.min(1, v));
+const mix = (a,b,k) => a.map((p,i) => p + (b[i]-p)*k);
+const dim = (c,k) => c.map(v => v*k);
+const hx = c => "rgb(" + c.map(v => Math.round(clamp(v)*255)).join(",") + ")";
+
+let W, H, items = [], t0 = 0, done = false, rng, SC, LIFT;
+
+function build() {
+  rng = mulberry(11);
+  const dpr = window.devicePixelRatio || 1;
+  W = stage.clientWidth; H = stage.clientHeight;
+  cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  SC = Math.min(W*0.94/32, H*0.8/30);
+  const k = clamp(W/420) * 0.25 + 0.75 + (W > 700 ? 0.25 : 0);
+  const SIZES = [8,9,10,11].map(s => Math.round(s*k*10)/10);
+  const GAP = 6*k, OY = SC, LIFT_ = 34*k; LIFT = LIFT_;
+  const font = s => "bold " + s + "px Arial, sans-serif";
+
+  const heart = a => [16*Math.pow(Math.sin(a),3)*SC,
+    (13*Math.cos(a)-5*Math.cos(2*a)-2*Math.cos(3*a)-Math.cos(4*a))*SC + OY];
+  const POLY = Array.from({length:720}, (_,i) => heart(2*Math.PI*i/720));
+  const EDGES = POLY.map((p,i) => [p, POLY[(i+1)%720]]);
+  const YMAX = Math.max(...POLY.map(p=>p[1])), YMIN = Math.min(...POLY.map(p=>p[1])), CY = (YMAX+YMIN)/2;
+
+  const spans = y => {
+    const xs = [];
+    for (const [[x1,y1],[x2,y2]] of EDGES)
+      if ((y1<=y && y<y2) || (y2<=y && y<y1)) xs.push(x1 + (y-y1)*(x2-x1)/(y2-y1));
+    xs.sort((a,b)=>a-b);
+    const out = []; for (let i=0;i+1<xs.length;i+=2) out.push([xs[i],xs[i+1]]); return out;
+  };
+  const intersect = (A,B) => { const o=[]; for (const a of A) for (const b of B) {
+    const lo=Math.max(a[0],b[0]), hi=Math.min(a[1],b[1]); if (hi-lo > 14*SC/21) o.push([lo,hi]); } return o; };
+
+  let order = [], oi = 0;
+  const nextPhrase = () => { if (oi >= order.length) { order = PHRASES.slice();
+    for (let i=order.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; } oi = 0; }
+    return order[oi++]; };
+
+  ctx.textBaseline = "middle"; ctx.textAlign = "center";
+  const rowH = Math.max(...SIZES)*1.25 + 4, half = rowH/2, placed = [];
+  for (let y = YMAX-half; y > YMIN+half; y -= rowH) {
+    for (let [lo,hi] of intersect(spans(y+half), spans(y-half))) {
+      lo += 4; hi -= 4;
+      let cur = lo + rng()*8; const line = [];
+      for (;;) {
+        let fit = null;
+        for (let n=0;n<10;n++) {
+          const text = nextPhrase(), size = SIZES[Math.floor(rng()*SIZES.length)];
+          ctx.font = font(size); const w = ctx.measureText(text).width;
+          if (cur + w <= hi) { fit = [text,size,w]; break; }
+        }
+        if (!fit) break;
+        line.push([cur+fit[2]/2, fit[0], fit[1], fit[2]]); cur += fit[2] + GAP;
+      }
+      if (!line.length) continue;
+      if (line.length > 1) { const left = hi - (line[line.length-1][0] + line[line.length-1][3]/2);
+        line.forEach((it,i) => it[0] += left*i/(line.length-1)); }
+      else line[0][0] = (lo+hi)/2;
+      line.forEach(([x,text,size],i) => placed.push({x, y, text, size, edge: i===0 || i===line.length-1}));
+    }
+  }
+  const wine=[.58,0,.09], crimson=[.9,.05,.14], blood=[.98,.1,.16];
+  for (const p of placed) {
+    p.rad = Math.min(1, Math.hypot(p.x/(16*SC), (p.y-CY)/(14.5*SC)));
+    let b = mix(wine, crimson, .25+.75*p.rad);
+    b = mix(b, blood, rng()*.35 + (p.edge ? .3 : 0));
+    p.color = b.map(v => Math.min(1,v)); p.dx = (rng()*2-1)*10*k; p.font = font(p.size); p.big = font(p.size+1);
+  }
+  const edges = placed.filter(p=>p.edge).sort((a,b) => (Math.atan2(a.x,a.y-CY)+4*Math.PI)%(2*Math.PI) - (Math.atan2(b.x,b.y-CY)+4*Math.PI)%(2*Math.PI));
+  const inner = placed.filter(p=>!p.edge); inner.forEach(p => p.key = -p.rad + rng()*.08);
+  inner.sort((a,b)=>a.key-b.key);
+  items = edges.concat(inner);
+  items.forEach((p,i) => p.start = i * (DURATION / items.length));
+  items.cy = H/2 + CY*0; items.ox = W/2; items.oy = H/2 + CY;
+}
+
+function draw(now) {
+  const t = now - t0;
+  ctx.fillStyle = BG; ctx.fillRect(0,0,W,H);
+  ctx.textBaseline = "middle"; ctx.textAlign = "center";
+  let allDone = true;
+  const sh = done ? Math.floor(now/140) : -1;
+  for (let i = 0; i < items.length; i++) {
+    const p = items[i]; if (t < p.start) { allDone = false; continue; }
+    const u = clamp((t - p.start)/ANIM), e = 1 - Math.pow(1-u, 3);
+    if (u < 1) allDone = false;
+    const c = p.color, x = items.ox + p.x, y = items.oy - p.y;
+    const px = x + p.dx*(1-e), py = y - (1-e)*LIFT;
+    ctx.font = p.font; ctx.fillStyle = hx(mix(BGC, dim(c,.3), e)); ctx.fillText(p.text, x+2, y+3);
+    ctx.font = p.big; ctx.fillStyle = hx(mix(BGC, dim(c,.2), e*e)); ctx.fillText(p.text, px, py);
+    let col = mix(mix(BGC, c, Math.pow(e,1.5)), FLASH, .75*Math.sin(Math.PI*clamp((u-.55)/.45)));
+    if (done && ((i*7919 + sh*104729) % items.length) < 2) col = mix(c, FLASH, .6);
+    ctx.font = p.font; ctx.fillStyle = hx(col); ctx.fillText(p.text, px, py);
+  }
+  if (allDone && !done) { done = true; replay.classList.add("show"); }
+  requestAnimationFrame(draw);
+}
+
+let started = false;
+function start() {
+  done = false; replay.classList.remove("show"); build(); t0 = performance.now();
+  if (!started) { started = true; requestAnimationFrame(draw); }
+}
+document.getElementById("open").addEventListener("click", () => {
+  document.getElementById("intro").style.opacity = 0;
+  setTimeout(() => document.getElementById("intro").style.display = "none", 800);
+  stage.classList.add("on"); start();
+});
+stage.addEventListener("click", () => { if (done) start(); });
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (started) start(); }, 250); });
+</script>
+</body>
+</html>
